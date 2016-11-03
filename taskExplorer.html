@@ -1,0 +1,51 @@
+<html>
+  <head>
+    <title>Explore The Tasks Performed by Federal Employees</title>
+    <!--pointer to css style sheet -->
+    <link rel="stylesheet" type="text/css" href="./css/taskExplorer.css">
+    <link rel="stylesheet" type="text/css" href="./css/bootstrap-2.3.2.min.css">
+
+    <!--jquery, for reading CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    
+    <!-- Load d3.js library-->
+    <script src="https://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+    
+    <!-- Load d3plus library -->
+    <script src="./js/d3plus.full.min.js"></script>
+
+    <!--Helper Functions-->
+    <script src="./js/helper_functions.js" type="text/javascript"></script>
+    <script src="./js/occ_dictionary.js" type="text/javascript"></script>
+    <script src="./js/task_hours.js" type="text/javascript"></script>
+
+    <!-- Dynatable stylesheets and js lib -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Dynatable/0.3.1/jquery.dynatable.css">
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Dynatable/0.3.1/jquery.dynatable.min.js"></script>
+    
+  </head>
+  <body>
+    <H1 align="center">Choose a Federal Occupation to Explore the Tasks it Performs</h1>
+    <div id="pie_and_table_div" height="80%">
+      <div id="task_pie_div">
+	<h2 id="pie_heading">Hours per task for occupation 0006</h2>
+      </div>
+      <div id="task_table_div">
+	<table id="task_table" class="table table-bordered" width="90%">
+	  <thead>
+	    <th class="dynatable-head" data-dynatable-column="fedscope_occ">Federal Occupation Series</th>
+	    <th class="dynatable-head" data-dynatable-column="fedscope_title">Occupation Title</th>
+	    <th class="dynatable-head" data-dynatable-column="occ_desc">Occupation Description</th>
+	    <th class="dynatable-head" data-dynatable-column="employment_numeric">Total Employment</th>
+	    <th class="dynatable-head" data-dynatable-column="salary_numeric">Average Salary</th>
+	  </thead>
+	  <tbody></tbody>
+	</table>
+      </div>
+    </div>
+    <p align="center"><i>Source: <a href="http://www.onetonline.org/">US Department of Labor, O*Net Occupations Catalogue</a> and Office of Personnel Management <a href="https://www.fedscope.opm.gov/">Fedscope Data, Sept 2016</a>.</i></p>
+
+    <!--Now build the visualization -->
+    <script src="./js/build_task_explorer_viz.js" type="text/javascript"></script>
+  </body>
+</html>

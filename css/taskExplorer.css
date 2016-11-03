@@ -1,0 +1,17 @@
+#task_pie_div
+{
+    height: 80%;
+    width: 50%;
+    float: left;
+}
+#task_table_div
+{
+    height: 80%;
+    width: 50%;
+    float: right;
+}
+#task_table
+{
+    height: 90%;
+    font-size: 10px;
+}
