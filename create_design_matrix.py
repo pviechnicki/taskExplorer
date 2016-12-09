@@ -1,7 +1,7 @@
 # requires: html5lib, lxml
 import logging
 import glob
-import seaborn as sns
+import seaborn as sns # for easy on the eyes defaults
 import pandas as pd
 import re
 from zipfile import ZipFile
@@ -9,6 +9,8 @@ from io import BytesIO
 import requests
 import matplotlib.pyplot as plt
 import os
+
+import ipdb
 
 # ONET Version specific constants, we
 # download those version between LAST/First_ONET_DB
@@ -106,7 +108,7 @@ merged_table.to_csv('merged_'+named_tables[selected_idx], sep='\t')
 merged_table = pd.read_csv('merged_'+named_tables[selected_idx], sep='\t')
 merged_table['Date'] = pd.to_datetime(merged_table['Date'])
 
-# Analysis stage
+# Analysis Stage
 
 # Question 1: How temporally distinct are the task updates where more than 1 update happend?
 #
@@ -131,7 +133,7 @@ merged_table['Date'] = pd.to_datetime(merged_table['Date'])
 
 unique_tasks_by_date = merged_table.drop_duplicates(subset=['Task ID', 'Date'], keep='first')
 task_updates_freq = unique_tasks_by_date['Task ID'].value_counts()
-update_mask = task_updates_freq > 1
+#update_mask = task_updates_freq > 1
 
 # ... this duplicates frequency data but makes it much easier to analyze and manipulate things
 # todo: clear SettingWithCopy warning (see is_copy, set to false?)
@@ -139,15 +141,27 @@ update_mask = task_updates_freq > 1
 unique_tasks_by_date['frequency'] = unique_tasks_by_date['Task ID'].map(task_updates_freq)
 
 # ... now we want to plot these tasks across time with the hope of observing a gap of time betwen two
-# clusters of before/after samples. So this is a 1 dimension density plot along time
+# clusters of before/after samples. So this is an overlapping density plot of the two samples.
 mask = unique_tasks_by_date['frequency'] > 1
 
-# todo: insert a solution that plots the distribution of task dates
-# seaborn.distplot doesn't like this date format ...
-#fig, ax = plt.subplots(figsize=(8,4))
-#sns.distplot(unique_tasks_by_date.loc[mask, 'Date'],
-#             rug=True,
-#             hist=False,
-#             rug_kws={'color':'g'},
-#             kde_kws={'color':'k', 'lw':3})
-#plt.show()
+# ... to capture sample points in time we take teh cumulative count across Task ID, so that
+# cumulative count = 1 is the first sample of that Id, c.count = 2 is the second and so on.
+# there are at most 3 samples taking, with most having only 2
+
+# note: get rid of annoying value is trying to be set on copy warning
+unique_tasks_by_date['cumulative counts'] = unique_tasks_by_date.groupby("Task ID").cumcount()+1
+
+# ... now we plot overlapping histograms of the before, aftre sampling in time. We should see
+# distinct clusters
+before_mask = unique_tasks_by_date['cumulative counts'] == 1
+after_mask = unique_tasks_by_date['cumulative counts'] == 2
+beyond_mask = unique_tasks_by_date['cumulative counts'] == 3
+
+bins = 50
+alpha = 0.5
+plt.hist(unique_tasks_by_date.loc[after_mask, 'Date'].values, color='orange', bins=bins, width=bins*1, alpha=2*alpha, label='after')
+plt.hist(unique_tasks_by_date.loc[before_mask, 'Date'].values, color='blue', bins=bins, alpha=alpha, label='before')
+plt.hist(unique_tasks_by_date.loc[beyond_mask, 'Date'].values, color='pink', bins=bins, width=bins*1.25, alpha=alpha, label='beyond')
+plt.legend(loc='upper right')
+plt.ion()
+plt.show()
