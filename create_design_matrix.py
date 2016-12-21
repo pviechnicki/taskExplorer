@@ -173,10 +173,21 @@ date_cutoff = '2010-01-01'
 after_cutoff = unique_tasks_by_date['Date'] > date_cutoff
 
 # filter out those rows not having a second update (see: after_mask) occuring after 2010-01-01 (see: after_cutoff)
-all_tasks = merged_table['Task ID'].isin( unique_tasks_by_date.loc[after_mask & after_cutoff, 'Task ID'] )
+resampled_tasks = merged_table['Task ID'].isin( unique_tasks_by_date.loc[after_mask & after_cutoff, 'Task ID'] )
 
 # (... gives 11,096 tasks (out of 20,200, e.g. merged_table['Task ID'].unique()))
-# ... add a column for time differential from task start date (in years)
+# ... add a column for time differential from task start date
 
-# todo: fix up this logic to create a date map for task ids
-unique_tasks_by_date.loc[before_mask, ['Date', 'Task ID']].set_index('Task ID')
+# ... create a task map to dates for those tasks in before_mask that we selected above
+#first_task_samples = unique_tasks_by_date.loc[before_mask, 'Task ID'].isin( unique_tasks_by_date.loc[after_mask & after_cutoff, 'Task ID'] )
+
+task_date_map = unique_tasks_by_date.loc[before_tasks, ['Task ID', 'Date']].set_index('Task ID')['Date']
+
+# copy off only those rows we want and then add in date from first task sample to help finish the design matrix
+design_matrix = merged_table[resampled_tasks]
+
+design_matrix['First Task Date'] = design_matrix['Task ID'].map(task_date_map)
+design_matrix['Days Elapsed From First Task Date'] = design_matrix['Date'] - design_matrix['First Task Date']
+
+# ... finally we append the associated IWA to the task
+# (download dwa_reference, task_to_dwas, assoicate IWA to each task)
