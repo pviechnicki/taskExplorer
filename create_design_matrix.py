@@ -165,3 +165,18 @@ plt.hist(unique_tasks_by_date.loc[beyond_mask, 'Date'].values, color='pink', bin
 plt.legend(loc='upper right')
 plt.ion()
 plt.show()
+
+# ... yep, we see a seperation of before and after task samples at about 2009 - 2010.
+# so we'll use this point in time to index all Task IDs with samples before and after that point in time
+
+date_cutoff = '2010-01-01'
+after_cutoff = unique_tasks_by_date['Date'] > date_cutoff
+
+# filter out those rows not having a second update (see: after_mask) occuring after 2010-01-01 (see: after_cutoff)
+all_tasks = merged_table['Task ID'].isin( unique_tasks_by_date.loc[after_mask & after_cutoff, 'Task ID'] )
+
+# (... gives 11,096 tasks (out of 20,200, e.g. merged_table['Task ID'].unique()))
+# ... add a column for time differential from task start date (in years)
+
+# todo: fix up this logic to create a date map for task ids
+unique_tasks_by_date.loc[before_mask, ['Date', 'Task ID']].set_index('Task ID')
