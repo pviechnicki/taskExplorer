@@ -108,6 +108,20 @@ merged_table.to_csv('merged_'+named_tables[selected_idx], sep='\t')
 merged_table = pd.read_csv('merged_'+named_tables[selected_idx], sep='\t')
 merged_table['Date'] = pd.to_datetime(merged_table['Date'])
 
+
+# ... store off latest Task to DWA table as well (note: this table was added as a new file
+# for release 18.1, and keep the same for release 19.0 onward. Here we assume that
+# the current release will have all current and older (if any) task ides.
+#
+# we also assume the IWAs can be extracted from the DWA ID field as well (preventing us from needing
+# to d/l yet another table
+file_name_task_dwa = "Tasks to DWAs.txt"
+dl_url = construct_dl_url(versioned_releases[0], version, extension="/"+file_name_task_dwa)
+tasks_to_dwas = pd.read_csv( BytesIO( requests.get(dl_url['url']).content), sep="\t")
+
+tasks_to_dwas["IWA ID"] = tasks_to_dwas['DWA ID'].str[:-4]
+tasks_to_dwas.to_csv(file_name_task_dwa, sep="\t")
+
 # Analysis Stage
 
 # Question 1: How temporally distinct are the task updates where more than 1 update happend?
@@ -190,4 +204,13 @@ design_matrix['First Task Date'] = design_matrix['Task ID'].map(task_date_map)
 design_matrix['Days Elapsed From First Task Date'] = design_matrix['Date'] - design_matrix['First Task Date']
 
 # ... finally we append the associated IWA to the task
-# (download dwa_reference, task_to_dwas, assoicate IWA to each task)
+tasks_iwa_map = tasks_to_dwas[['Task ID','IWA ID']].set_index('Task ID')['IWA ID']
+# todo: figure out how to handle Task ID mapping to multiple IWAs, remove those task ids and then map
+
+# strategy: iterate over rows, counting each occurance of a unique task id/IWA pair. For those counts at 2 or more, store off task id frequency ratings
+
+# when done, then just sum up frequency ratings, divide by count, recalculate Data Rating
+
+# update task id's with those new values
+
+# Now we can map every task id to an IWA, even if there are multiple IWA mapped.
