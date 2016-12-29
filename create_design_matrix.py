@@ -20,6 +20,8 @@ OLD_ONET_VERSION = 20.0
 LAST_ONET_DB = 21.1
 FIRST_ONET_DB = 14.0
 
+named_tables=["Task Ratings.txt", "Task Statements.txt"]
+file_name_task_dwa = "Tasks to DWAs.txt"
 output_dir = "./db_releases/"
 
 def extract_version_date(version_string):
@@ -78,51 +80,54 @@ def extract_named_tables(dl_url, named_tables=["Task Ratings.txt", "Task Stateme
 
     return ret
 
-versioned_releases = pd.io.html.read_html(db_releases_url)[0][0]
+# Pull down ONET related date iff `db_releases` does not exist
+if not os.path.isdir(output_dir):
+    versioned_releases = pd.io.html.read_html(db_releases_url)[0][0]
 
-# Extract, Transform Stages for ONET databaes releases and named tables extracted
-named_tables=["Task Ratings.txt", "Task Statements.txt"]
-os.makedirs(output_dir, exist_ok=True)
+    # Extract, Transform Stages for ONET databaes releases and named tables extracted
+    os.makedirs(output_dir, exist_ok=True)
 
-for idx, row in versioned_releases.iteritems():
-    version = extract_version_date(row)
-    if float(version) <= LAST_ONET_DB and float(version) >= FIRST_ONET_DB:
-        dl_url = construct_dl_url(row, version)
-        print(dl_url['url'])
-        tables = extract_named_tables(dl_url['url'], named_tables=named_tables)
+    for idx, row in versioned_releases.iteritems():
+        version = extract_version_date(row)
+        if float(version) <= LAST_ONET_DB and float(version) >= FIRST_ONET_DB:
+            dl_url = construct_dl_url(row, version)
+            print(dl_url['url'])
+            tables = extract_named_tables(dl_url['url'], named_tables=named_tables)
 
-        for table_name in tables['dfs']:
-            df = tables['dfs'][table_name]
-            file_name = "".join((output_dir, '_'.join((version, table_name))))
-            df.to_csv(file_name, sep='\t')
+            for table_name in tables['dfs']:
+                df = tables['dfs'][table_name]
+                file_name = "".join((output_dir, '_'.join((version, table_name))))
+                df.to_csv(file_name, sep='\t')
 
-# ... merge together tasks across database releases
-selected_idx = 0
-selected_filenames = glob.glob(output_dir + '*' + named_tables[selected_idx] + '*')
-merged_table = pd.concat((pd.read_csv(f, sep='\t') for f in selected_filenames),
-                          ignore_index=True)
+    # ... merge together tasks across database releases
+    selected_idx = 0
+    selected_filenames = glob.glob(output_dir + '*' + named_tables[selected_idx] + '*')
+    merged_table = pd.concat((pd.read_csv(f, sep='\t') for f in selected_filenames),
+                              ignore_index=True)
 
-merged_table['Date'] = pd.to_datetime(merged_table['Date'], format="%m/%Y")
-merged_table.to_csv('merged_'+named_tables[selected_idx], sep='\t')
+    merged_table['Date'] = pd.to_datetime(merged_table['Date'], format="%m/%Y")
+    merged_table.to_csv('merged_'+named_tables[selected_idx], sep='\t')
 
-merged_table = pd.read_csv('merged_'+named_tables[selected_idx], sep='\t')
-merged_table['Date'] = pd.to_datetime(merged_table['Date'])
+    # ... store off latest Task to DWA table as well (note: this table was added as a new file
+    # for release 18.1, and kept the same for release 19.0 onward. Here we assume that
+    # the current release will have all current and older (if any) task ides.
+    #
+    # we also assume the IWAs can be extracted from the DWA ID field as well (preventing us from needing
+    # to d/l yet another table)
+    dl_url = construct_dl_url(versioned_releases[0], version, extension="/"+file_name_task_dwa)
+    tasks_to_dwas = pd.read_csv( BytesIO( requests.get(dl_url['url']).content), sep="\t")
 
-
-# ... store off latest Task to DWA table as well (note: this table was added as a new file
-# for release 18.1, and keep the same for release 19.0 onward. Here we assume that
-# the current release will have all current and older (if any) task ides.
-#
-# we also assume the IWAs can be extracted from the DWA ID field as well (preventing us from needing
-# to d/l yet another table
-file_name_task_dwa = "Tasks to DWAs.txt"
-dl_url = construct_dl_url(versioned_releases[0], version, extension="/"+file_name_task_dwa)
-tasks_to_dwas = pd.read_csv( BytesIO( requests.get(dl_url['url']).content), sep="\t")
-
-tasks_to_dwas["IWA ID"] = tasks_to_dwas['DWA ID'].str[:-4]
-tasks_to_dwas.to_csv(file_name_task_dwa, sep="\t")
+    tasks_to_dwas["IWA ID"] = tasks_to_dwas['DWA ID'].str[:-4] #fixed width DWA ID format
+    tasks_to_dwas.to_csv(file_name_task_dwa, sep="\t")
 
 # Analysis Stage
+
+# read in data tables on which to do analysis on...
+tasks_to_dwas = pd.read_csv( file_name_task_dwa, sep="\t")
+
+selected_idx = 0 # we'll just take the first merged table, Task Ratings.txt
+merged_table = pd.read_csv('merged_'+named_tables[selected_idx], sep='\t')
+merged_table['Date'] = pd.to_datetime(merged_table['Date'])
 
 # Question 1: How temporally distinct are the task updates where more than 1 update happend?
 #
@@ -138,7 +143,6 @@ tasks_to_dwas.to_csv(file_name_task_dwa, sep="\t")
 #     we should verify that each set of time samples are generally clustered together. If the samples are
 #     difused across time then we can't point to the intervening effect of AI/Automation because the
 #     before and after samples occur during the intervening effect.
-
 
 # Although we work at the IWA level for the higher level analysis (not yet described), we work at the Task
 # level here because it's simpler and the fundamental component of something AI/Automation replaces.
@@ -192,9 +196,8 @@ resampled_tasks = merged_table['Task ID'].isin( unique_tasks_by_date.loc[after_m
 # (... gives 11,096 tasks (out of 20,200, e.g. merged_table['Task ID'].unique()))
 # ... add a column for time differential from task start date
 
-# ... create a task map to dates for those tasks in before_mask that we selected above
-#first_task_samples = unique_tasks_by_date.loc[before_mask, 'Task ID'].isin( unique_tasks_by_date.loc[after_mask & after_cutoff, 'Task ID'] )
-
+# ... create a task map *to dates* for those tasks in before_mask that we selected above
+before_tasks = unique_tasks_by_date['Date'] <= date_cutoff
 task_date_map = unique_tasks_by_date.loc[before_tasks, ['Task ID', 'Date']].set_index('Task ID')['Date']
 
 # copy off only those rows we want and then add in date from first task sample to help finish the design matrix
