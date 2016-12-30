@@ -23,6 +23,7 @@ db_releases_url = "http://www.onetcenter.org/db_releases.html" # d/l link isn't 
 OLD_ONET_VERSION = 20.0
 LAST_ONET_DB = 21.1
 FIRST_ONET_DB = 14.0
+ONET_3_0_DB_DATE = "2000-08-01"
 
 named_tables=["Task Ratings.txt", "Task Statements.txt"]
 file_name_task_dwa = "Tasks to DWAs.txt"
@@ -265,7 +266,7 @@ def iwa_task_generator(tasks_to_dwas=tasks_to_dwas, task_matrix=task_matrix):
             print(iwa, ' has no tasks occuring both before and after {} date'.format(date_cutoff))
 
         idx += 1
-        print("Extracted statistics for iwa {} ({} IWA)".format(iwa, idx))
+        print("Extracted statistics for iwa {} ({}th IWA)".format(iwa, idx))
 
     df = pd.DataFrame(ret, columns=['IWA ID', 'Category', 'Median Date', 'Median Data Value'])
     return df
@@ -333,5 +334,13 @@ def construct_iwa_statistics(iwa, group, date_cutoff=date_cutoff):
 #task_matrix['IWA ID'] = task_matrix['Task ID'].map(tasks_iwa_map)
 
 design_matrix = iwa_task_generator()
+
+# Assign date differential against first ONET release. Originally we were going to do differential between
+# first IWA release but this would confound any effects of time since IWAs later in time but having the same
+# period of time between early IWAs would have the same differential. Instead we assume a fixed date relative
+# to all IWAs, the date of the first ONET DB release, ONET_3_0_DB_DATE, in late 2000
+
+design_matrix['Date Offset'] = design_matrix['Median Date'] - pd.to_datetime(ONET_3_0_DB_DATE)
 design_matrix.to_csv(output_matrix_name, sep='\t')
+
 # assert len(design_matrix['IWA ID'].unique()) == 331
