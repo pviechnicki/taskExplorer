@@ -190,6 +190,8 @@ plt.show()
 # ... yep, we see a seperation of before and after task samples at about 2009 - 2010.
 # so we'll use this point in time to index all Task IDs with samples before and after that point in time
 
+# 2) Construct the Design Matrix
+
 # Now we create an index into the merged data table for those task ids that have updates before and after
 # the 2009 - 2010 cut off point. This requires that we create masks for those tasks occuring after the date
 # cutoff point. The `after_mask` variable is critical in only looking at those tasks that have occured 2x or more
@@ -204,6 +206,7 @@ date_cutoff = '2010-01-01'
 after_cutoff = unique_tasks_by_date['Date'] > date_cutoff
 
 # filter out those rows not having a second update (see: after_mask) occuring after 2010-01-01 (see: after_cutoff)
+
 resampled_tasks = merged_table['Task ID'].isin( unique_tasks_by_date.loc[after_mask & after_cutoff, 'Task ID'] )
 
 # (... gives 11,096 tasks (out of 20,200, e.g. merged_table['Task ID'].unique()))
@@ -220,10 +223,20 @@ task_date_map = unique_tasks_by_date.loc[before_tasks, ['Task ID', 'Date']].set_
 # time related variables (First Task Date, Days Elapsed).
 
 # ... copy off only those rows having tasks that occur before and after cutoff date, add in date/time information ...
+
+# DEBUG NOTE: When used with tasks_iwa_map I seem to be getting tasks that have no after date_cutoff sample
+#   check logic above. For now (in the interest of time) I will filter IWAs with no after samples in
+#   the construct_iwa_statistics function.
+#
+#   Fixing this would push the check to the task level, seeing if a task was in that matrix (if not, then skip IWA/Category)
+#   instead of checking the result of the before/after statistics
+
 task_matrix = merged_table[resampled_tasks]
 
 task_matrix['First Task Date'] = task_matrix['Task ID'].map(task_date_map)
 task_matrix['Days Elapsed From First Task Date'] = task_matrix['Date'] - task_matrix['First Task Date']
+
+task_matrix.set_index('Task ID', inplace=True)
 
 # D) As a final step we group task information by IWA, aggregate information for follow on analysis.
 # Information aggregated are: date related items (start, differential), Data Rating per frequency. By
@@ -247,13 +260,15 @@ def iwa_task_generator(tasks_to_dwas=tasks_to_dwas, task_matrix=task_matrix):
         stats = construct_iwa_statistics(iwa,
                                          task_matrix.loc[group['Task ID'].values, :])
 
+        #ipdb.set_trace()
         ret.extend(stats)
 
         idx += 1
-        if idx > 2:
+        if idx > 60:
             break
+        else:
+            print(idx, ' is idx')
 
-    # debug, should place outside of for loop
     df = pd.DataFrame(ret, columns=['IWA ID', 'Category', 'Median Date', 'Median Data Value'])
     return df
 
@@ -262,7 +277,6 @@ def get_mean_iwa_info(iwa, cat, date_cutoff, group, direction='<='):
 
     query = df.query("Category == \'{}\'".format(cat))
 
-    sorted_date = query['Date'].sort_values(inplace=False)
     date_mean = query['Date'].astype('int64').mean().astype('datetime64[ns]')
     date = date_mean
 
@@ -272,34 +286,37 @@ def get_mean_iwa_info(iwa, cat, date_cutoff, group, direction='<='):
 def get_median_iwa_info(iwa, cat, date_cutoff, group, direction='<='):
     df = group.query("Date {} '{}'".format(direction, date_cutoff))
 
-    query = df.query("Category == \'{}\'".format(cat))
+    date = pd.to_datetime('') # null date time, NaT
+    data_value = pd.np.nan
+    if not df.empty:
+        query = df.query("Category == \'{}\'".format(cat))
 
-    sorted_date = query['Date'].sort_values(inplace=False)
-    date_median = sorted_date.iloc[ math.ceil(len(sorted_date)/2) ]
-    date = date_median
+        if not query.empty:
+            sorted_date = query['Date'].sort_values(inplace=False)
+            date_median = sorted_date.iloc[ math.ceil(len(sorted_date)/2) - 1 ]
+            date = date_median
 
-    data_value = query['Data Value'].median()
+            data_value = query['Data Value'].median()
+
     return (iwa, cat, date, data_value)
 
 def construct_iwa_statistics(iwa, group, date_cutoff=date_cutoff):
     """
-    Returns sets of 3-tuples of IWA, date, Category, median Category Date Value
-
-    First tuple aggregates prior to date_cutoff, second tuple aggregates after date_cutoff
+    Returns sets of 3-tuples of IWA, median date, Category, median Category Date Value
+    for before and after the date_cutoff
     """
     ret = []
     categories = [1,2,3,4,5,6,7]
 
     # for each side of the date cutoff, for each catogory, aggregate task Data Values
-    #df = group.query("Date <= '{}'".format(date_cutoff))
     for cat in categories:
         before_values = get_median_iwa_info(iwa, cat, date_cutoff, group)
         after_values = get_median_iwa_info(iwa, cat, date_cutoff, group, direction='>')
+        #ipdb.set_trace()
 
-        ret.append( before_values )
-        ret.append( after_values )
-
-    # ... repeat on after side of the data cutoff
+        if not pd.np.isnan( after_values[-1] ): # if we have samples around date_cuttoff. See debug note above
+            ret.append( before_values )
+            ret.append( after_values )
 
     return ret
 
@@ -310,9 +327,12 @@ def construct_iwa_statistics(iwa, group, date_cutoff=date_cutoff):
 # see: https://www.onetcenter.org/dictionary/20.1/excel/tasks_to_dwas.html and https://www.onetcenter.org/dictionary/20.1/excel/dwa_reference.html
 #
 # Essentially each DWA maps to only one IWA (so they're uniquely transitive, don't really mean much)
-# Multiple Tasks map to a single IWA/DWA, so we need to group by IWA. Many tasks make up an IWA
-
-task_matrix['IWA ID'] = task_matrix['Task ID'].map(tasks_iwa_map)
+# Multiple Tasks map to a single IWA/DWA, so we need to group by IWA.
+#
+# Many tasks make up an IWA, which is why we need to roll up tasks to IWAs.
+#
+# note: currently the iwa_task_generator() calls the median statistics function, since the average has a bit of skew
+#task_matrix['IWA ID'] = task_matrix['Task ID'].map(tasks_iwa_map)
 
 design_matrix = iwa_task_generator()
 design_matrix.to_csv(output_matrix_name, sep='\t')
