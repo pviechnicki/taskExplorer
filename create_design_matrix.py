@@ -10,8 +10,11 @@ import requests
 import matplotlib.pyplot as plt
 import os
 import math
+from distutils.version import LooseVersion
 
 import ipdb
+
+assert LooseVersion( pd.__version__) >= LooseVersion('0.19'), "Use Pandas version >= 0.19 on Mac, data parsing depends on order and a few defaults in Pandas library for correctness."
 
 # ONET Version specific constants, we
 # download those version between LAST/First_ONET_DB
@@ -224,13 +227,6 @@ task_date_map = unique_tasks_by_date.loc[before_tasks, ['Task ID', 'Date']].set_
 
 # ... copy off only those rows having tasks that occur before and after cutoff date, add in date/time information ...
 
-# DEBUG NOTE: When used with tasks_iwa_map I seem to be getting tasks that have no after date_cutoff sample
-#   check logic above. For now (in the interest of time) I will filter IWAs with no after samples in
-#   the construct_iwa_statistics function.
-#
-#   Fixing this would push the check to the task level, seeing if a task was in that matrix (if not, then skip IWA/Category)
-#   instead of checking the result of the before/after statistics
-
 task_matrix = merged_table[resampled_tasks]
 
 task_matrix['First Task Date'] = task_matrix['Task ID'].map(task_date_map)
@@ -257,17 +253,19 @@ def iwa_task_generator(tasks_to_dwas=tasks_to_dwas, task_matrix=task_matrix):
 
     idx = 0
     for iwa, group in tasks_to_dwas.groupby('IWA ID'): # over IWAs
-        stats = construct_iwa_statistics(iwa,
-                                         task_matrix.loc[group['Task ID'].values, :])
 
+        indices = group['Task ID'].values
         #ipdb.set_trace()
-        ret.extend(stats)
+
+        if any(task_matrix.index.isin(indices)): # assumes O(1) hash checking against index
+            stats = construct_iwa_statistics(iwa,
+                                             task_matrix.loc[indices, :])
+            ret.extend(stats)
+        else:
+            print(iwa, ' has no tasks occuring both before and after {} date'.format(date_cutoff))
 
         idx += 1
-        if idx > 60:
-            break
-        else:
-            print(idx, ' is idx')
+        print("Extracted statistics for iwa {} ({} IWA)".format(iwa, idx))
 
     df = pd.DataFrame(ret, columns=['IWA ID', 'Category', 'Median Date', 'Median Data Value'])
     return df
@@ -336,3 +334,4 @@ def construct_iwa_statistics(iwa, group, date_cutoff=date_cutoff):
 
 design_matrix = iwa_task_generator()
 design_matrix.to_csv(output_matrix_name, sep='\t')
+# assert len(design_matrix['IWA ID'].unique()) == 331
