@@ -92,7 +92,8 @@ def initDB():
 #----------------------------------------------------------------------#
 def printHeaders():
     headers = ["IWA_ID", "HOURS_PER_YEAR_START", "HOURS_PER_YEAR_END",
-               "START_DAYS_OFFSET", "END_DAYS_OFFSET", "DAYS_SPAN"]
+               "HOURS_CHANGE", "START_DAYS_OFFSET",
+               "END_DAYS_OFFSET", "DAYS_SPAN"]
     print("|".join(headers))
     
 
@@ -205,7 +206,7 @@ def main(argv):
         start_value = get_start_value_from_table(iwa_id, start_days_offset)
         end_value = get_end_value_from_table(iwa_id, end_days_offset)
         change = end_value - start_value
-        print("{}|{:.2f}|{:.2f}|{:+.2f}|{}|{}|{}".format(iwa_id, start_value,
+        print("{}|{:.2f}|{:.2f}|{:.2f}|{}|{}|{}".format(iwa_id, start_value,
                                                          end_value,
                                                          change,
                                                          start_days_offset,
