@@ -10,6 +10,7 @@ import requests
 import matplotlib.pyplot as plt
 import os
 import math
+import numpy as np
 from distutils.version import LooseVersion
 
 import ipdb
@@ -194,7 +195,7 @@ plt.show()
 # ... yep, we see a seperation of before and after task samples at about 2009 - 2010.
 # so we'll use this point in time to index all Task IDs with samples before and after that point in time
 
-# 2) Construct the Design Matrix
+# 2) Construct the Design Matrix, following Issue 1
 
 # Now we create an index into the merged data table for those task ids that have updates before and after
 # the 2009 - 2010 cut off point. This requires that we create masks for those tasks occuring after the date
@@ -235,112 +236,151 @@ task_matrix['Days Elapsed From First Task Date'] = task_matrix['Date'] - task_ma
 
 task_matrix.set_index('Task ID', inplace=True)
 
-# D) As a final step we group task information by IWA, aggregate information for follow on analysis.
-# Information aggregated are: date related items (start, differential), Data Rating per frequency. By
-# masking before/after the cuttoff date we can crate before and after IWA measurements across time.
 
-# todo: create IWA to Task ID map, reindex task_matrix by Task ID
-# For each IWA, for Task IDs in task_matrix masked by time (before or after)
+# Sketch area for rough implemetation of issue
+
+# Reformat the merged table to contain only 'FT' related rows, deduplicated by Task ID/Date
+mt = merged_table.drop(merged_table.columns[[0,1,11]], 1)
+mt = mt.drop_duplicates(subset=['Task ID', 'Date', 'Category'], keep='first')
+mt = mt[mt['Scale ID'] == 'FT']
+mt = mt.drop('Scale ID', 1) # don't need this any more
+mt = mt.replace('n/a', np.NaN)
+
+# Add in compute year hours, sort dataframe to answer on change in hours, days per task across years
+# make everything numbery like
+hours_map = {'1':0.5, '2':1, '3':12, '4':52, '5':260, '6':520, '7':1043}
+scale_factor = 0.45
+mt['hours per year'] = mt['Category'].map(hours_map)*scale_factor
+mt = mt.sort_values(by=['Task ID', 'Category', 'Date'])
+mt = mt.convert_objects(convert_numeric=True)
+
+
+# For Task ID, Category chunks take the diff of several columns:
+#   hours per year, Standard Error, Date
+grp = mt.groupby(['Task ID', 'Category'])['Date', 'Standard Error', 'hours per year'].diff
+
+diff_columns = ['days offset','change hours per year','change in SE']
+diff_variables = ['Date', 'hours per year', 'Standard Error']
+
+# Should be a way to do this all at once w/in pandas syntax but whatever
+for idx, diffs in enumerate(zip(diff_columns, diff_variables)):
+    diff_col = diffs[0]
+    diff_var = diffs[1]
+    #print(idx, diff_col, diff_var)
+    mt[diff_col] = mt.groupby(['Task ID', 'Category'])[diff_var].diff()
+
+# output interim result
+mt.to_csv('./design_matrix/design_matrix.csv', sep='\t')
+
+# TODO attach IWA numbers, break out raw per IWA
+
+
+## D) As a final step we group task information by IWA, aggregate information for follow on analysis.
+## Information aggregated are: date related items (start, differential), Data Rating per frequency. By
+## masking before/after the cuttoff date we can crate before and after IWA measurements across time.
 #
-# take average of all Task ID frequency ratings, return result as IWA frequency rating
-
-tasks_iwa_map = tasks_to_dwas[['Task ID','IWA ID']].set_index('Task ID')['IWA ID']
-
-def iwa_task_generator(tasks_to_dwas=tasks_to_dwas, task_matrix=task_matrix):
-    """
-    Yield IWA and associated tasks within lower, upper date bounds
-    """
-    ret = []
-
-    idx = 0
-    for iwa, group in tasks_to_dwas.groupby('IWA ID'): # over IWAs
-
-        indices = group['Task ID'].values
-        #ipdb.set_trace()
-
-        if any(task_matrix.index.isin(indices)): # assumes O(1) hash checking against index
-            stats = construct_iwa_statistics(iwa,
-                                             task_matrix.loc[indices, :])
-            ret.extend(stats)
-        else:
-            print(iwa, ' has no tasks occuring both before and after {} date'.format(date_cutoff))
-
-        idx += 1
-        print("Extracted statistics for iwa {} ({}th IWA)".format(iwa, idx))
-
-    df = pd.DataFrame(ret, columns=['IWA ID', 'Category', 'Median Date', 'Median Data Value'])
-    return df
-
-def get_mean_iwa_info(iwa, cat, date_cutoff, group, direction='<='):
-    df = group.query("Date {} '{}'".format(direction, date_cutoff))
-
-    query = df.query("Category == \'{}\'".format(cat))
-
-    date_mean = query['Date'].astype('int64').mean().astype('datetime64[ns]')
-    date = date_mean
-
-    data_value = query['Data Value'].mean()
-    return (iwa, cat, date, data_value)
-
-def get_median_iwa_info(iwa, cat, date_cutoff, group, direction='<='):
-    df = group.query("Date {} '{}'".format(direction, date_cutoff))
-
-    date = pd.to_datetime('') # null date time, NaT
-    data_value = pd.np.nan
-    if not df.empty:
-        query = df.query("Category == \'{}\'".format(cat))
-
-        if not query.empty:
-            sorted_date = query['Date'].sort_values(inplace=False)
-            date_median = sorted_date.iloc[ math.ceil(len(sorted_date)/2) - 1 ]
-            date = date_median
-
-            data_value = query['Data Value'].median()
-
-    return (iwa, cat, date, data_value)
-
-def construct_iwa_statistics(iwa, group, date_cutoff=date_cutoff):
-    """
-    Returns sets of 3-tuples of IWA, median date, Category, median Category Date Value
-    for before and after the date_cutoff
-    """
-    ret = []
-    categories = [1,2,3,4,5,6,7]
-
-    # for each side of the date cutoff, for each catogory, aggregate task Data Values
-    for cat in categories:
-        before_values = get_median_iwa_info(iwa, cat, date_cutoff, group)
-        after_values = get_median_iwa_info(iwa, cat, date_cutoff, group, direction='>')
-        #ipdb.set_trace()
-
-        if not pd.np.isnan( after_values[-1] ): # if we have samples around date_cuttoff. See debug note above
-            ret.append( before_values )
-            ret.append( after_values )
-
-    return ret
-
-# D) As a final step, we aggregate Rating Data with the task/frequency level rolled up to the IWA level. Most tasks
-# point to one IWA but some point to as many as 3, which we average during the task aggreagtion step.
-
-# Notes on Task->DWA->IWA
-# see: https://www.onetcenter.org/dictionary/20.1/excel/tasks_to_dwas.html and https://www.onetcenter.org/dictionary/20.1/excel/dwa_reference.html
+## todo: create IWA to Task ID map, reindex task_matrix by Task ID
+## For each IWA, for Task IDs in task_matrix masked by time (before or after)
+##
+## take average of all Task ID frequency ratings, return result as IWA frequency rating
 #
-# Essentially each DWA maps to only one IWA (so they're uniquely transitive, don't really mean much)
-# Multiple Tasks map to a single IWA/DWA, so we need to group by IWA.
+#tasks_iwa_map = tasks_to_dwas[['Task ID','IWA ID']].set_index('Task ID')['IWA ID']
 #
-# Many tasks make up an IWA, which is why we need to roll up tasks to IWAs.
+#def iwa_task_generator(tasks_to_dwas=tasks_to_dwas, task_matrix=task_matrix):
+#    """
+#    Yield IWA and associated tasks within lower, upper date bounds
+#    """
+#    ret = []
 #
-# note: currently the iwa_task_generator() calls the median statistics function, since the average has a bit of skew
-#task_matrix['IWA ID'] = task_matrix['Task ID'].map(tasks_iwa_map)
-
-design_matrix = iwa_task_generator()
-
-# Assign date differential against first ONET release. Originally we were going to do differential between
-# first IWA release but this would confound any effects of time since IWAs later in time but having the same
-# period of time between early IWAs would have the same differential. Instead we assume a fixed date relative
-# to all IWAs, the date of the first ONET DB release, ONET_3_0_DB_DATE, in late 2000
-
-design_matrix['Date Offset'] = design_matrix['Median Date'] - pd.to_datetime(ONET_3_0_DB_DATE)
-design_matrix.to_csv(output_matrix_name, sep='\t')
-
-# assert len(design_matrix['IWA ID'].unique()) == 331
+#    idx = 0
+#    for iwa, group in tasks_to_dwas.groupby('IWA ID'): # over IWAs
+#
+#        indices = group['Task ID'].values
+#        #ipdb.set_trace()
+#
+#        if any(task_matrix.index.isin(indices)): # assumes O(1) hash checking against index
+#            stats = construct_iwa_statistics(iwa,
+#                                             task_matrix.loc[indices, :])
+#            ret.extend(stats)
+#        else:
+#            print(iwa, ' has no tasks occuring both before and after {} date'.format(date_cutoff))
+#
+#        idx += 1
+#        print("Extracted statistics for iwa {} ({}th IWA)".format(iwa, idx))
+#
+#    df = pd.DataFrame(ret, columns=['IWA ID', 'Category', 'Median Date', 'Median Data Value'])
+#    return df
+#
+#def get_mean_iwa_info(iwa, cat, date_cutoff, group, direction='<='):
+#    df = group.query("Date {} '{}'".format(direction, date_cutoff))
+#
+#    query = df.query("Category == \'{}\'".format(cat))
+#
+#    date_mean = query['Date'].astype('int64').mean().astype('datetime64[ns]')
+#    date = date_mean
+#
+#    data_value = query['Data Value'].mean()
+#    return (iwa, cat, date, data_value)
+#
+#def get_median_iwa_info(iwa, cat, date_cutoff, group, direction='<='):
+#    df = group.query("Date {} '{}'".format(direction, date_cutoff))
+#
+#    date = pd.to_datetime('') # null date time, NaT
+#    data_value = pd.np.nan
+#    if not df.empty:
+#        query = df.query("Category == \'{}\'".format(cat))
+#
+#        if not query.empty:
+#            sorted_date = query['Date'].sort_values(inplace=False)
+#            date_median = sorted_date.iloc[ math.ceil(len(sorted_date)/2) - 1 ]
+#            date = date_median
+#
+#            data_value = query['Data Value'].median()
+#
+#    return (iwa, cat, date, data_value)
+#
+#def construct_iwa_statistics(iwa, group, date_cutoff=date_cutoff):
+#    """
+#    Returns sets of 3-tuples of IWA, median date, Category, median Category Date Value
+#    for before and after the date_cutoff
+#    """
+#    ret = []
+#    categories = [1,2,3,4,5,6,7]
+#
+#    # for each side of the date cutoff, for each catogory, aggregate task Data Values
+#    for cat in categories:
+#        before_values = get_median_iwa_info(iwa, cat, date_cutoff, group)
+#        after_values = get_median_iwa_info(iwa, cat, date_cutoff, group, direction='>')
+#        #ipdb.set_trace()
+#
+#        if not pd.np.isnan( after_values[-1] ): # if we have samples around date_cuttoff. See debug note above
+#            ret.append( before_values )
+#            ret.append( after_values )
+#
+#    return ret
+#
+## D) As a final step, we aggregate Rating Data with the task/frequency level rolled up to the IWA level. Most tasks
+## point to one IWA but some point to as many as 3, which we average during the task aggreagtion step.
+#
+## Notes on Task->DWA->IWA
+## see: https://www.onetcenter.org/dictionary/20.1/excel/tasks_to_dwas.html and https://www.onetcenter.org/dictionary/20.1/excel/dwa_reference.html
+##
+## Essentially each DWA maps to only one IWA (so they're uniquely transitive, don't really mean much)
+## Multiple Tasks map to a single IWA/DWA, so we need to group by IWA.
+##
+## Many tasks make up an IWA, which is why we need to roll up tasks to IWAs.
+##
+## note: currently the iwa_task_generator() calls the median statistics function, since the average has a bit of skew
+##task_matrix['IWA ID'] = task_matrix['Task ID'].map(tasks_iwa_map)
+#
+#design_matrix = iwa_task_generator()
+#
+## Assign date differential against first ONET release. Originally we were going to do differential between
+## first IWA release but this would confound any effects of time since IWAs later in time but having the same
+## period of time between early IWAs would have the same differential. Instead we assume a fixed date relative
+## to all IWAs, the date of the first ONET DB release, ONET_3_0_DB_DATE, in late 2000
+#
+#design_matrix['Date Offset'] = design_matrix['Median Date'] - pd.to_datetime(ONET_3_0_DB_DATE)
+#design_matrix.to_csv(output_matrix_name, sep='\t')
+#
+## assert len(design_matrix['IWA ID'].unique()) == 331
