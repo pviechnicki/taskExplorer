@@ -201,6 +201,7 @@ plt.show()
 # Reformat the merged table to contain only 'FT' related rows, deduplicated by Task ID/Date,
 # drop/replaced unneeded values
 mt = merged_table.drop(merged_table.columns[[0,1,11]], 1)
+mt = mt.convert_objects(convert_numeric=True) # depreciated
 mt = mt.drop_duplicates(subset=['Task ID', 'Date', 'Category'], keep='first')
 mt = mt[mt['Scale ID'] == 'FT']
 mt = mt.drop('Scale ID', 1) # don't need this any more
@@ -208,23 +209,42 @@ mt = mt.replace('n/a', np.NaN)
 
 # Add in computed year hours, sort dataframe to answer on change in hours, days per task across years
 # make everything numbery like
-hours_map = {'1':0.5, '2':1, '3':12, '4':52, '5':260, '6':520, '7':1043}
-scale_factor = 0.45
-mt['hours per year'] = mt['Category'].map(hours_map)*scale_factor
-mt = mt.sort_values(by=['Task ID', 'Category', 'Date'])
-mt = mt.convert_objects(convert_numeric=True) # depreciated
+mt = mt.sort_values(by=['Task ID', 'Date'])
 
-# For Task ID, Category chunks take the diff of several columns:
-#   hours per year, Standard Error, Date (diff_colums), diffed into diff_variables
-diff_columns = ['days offset','change hours per year','change in SE']
-diff_variables = ['Date', 'hours per year', 'Standard Error']
+# convert each task category grouping into total hours per year, by this formula
+#
+# Time1hours =(E2 * 0.01 * 0.5 * 0.45) + (E4 * 0.01 * 1 * 0.45) + (E6 * 0.01 * 12 * 0.45) + (E8 * 0.01 * 52 * 0.45) + (E10 * 0.01 * 260 *0.45)  + (E12 * 0.01 * 520 *0.45)  + (E14 * 0.01 * 1043 * 0.45)
+# E* refers to order of category values
+adjusted_scale = 0.45
+percent_scale = 0.01
+category_factors = [0.5, 1, 12, 52, 260, 520, 1043]
 
-mt[diff_columns] = mt.groupby(['Task ID', 'Category'])[diff_variables].diff()
+# group
+grouped = mt.groupby(['Task ID', 'Date'])
 
-# output interim result
-mt.to_csv('./design_matrix/design_matrix.csv', sep='\t')
+# aggregate by Task ID/Date by calculating hours per year
+def hours_per_year(hours, adjusted_scale=adjusted_scale, category_factors=category_factors):
+    return (hours*category_factors).sum() * adjusted_scale * percent_scale
 
-# TODO attach IWA numbers, break out raw per IWA
+agg = grouped.agg({'Data Value': hours_per_year})
 
-#tasks_to_dwas[]
-# figure out what kind of join will make a row for each unique key in the right table
+# fix this code, kinda wonky, special cased but apparently gets the job done
+# "unroll" groups into one line, include other Task ID row information
+agg.reset_index(inplace=True)
+
+# What we need to select first indices and merge on the reset
+first = agg.drop_duplicates('Task ID', keep='first').index
+others = agg.index.difference(first)
+
+agg = agg.loc[first].merge(agg.loc[others], on="Task ID", suffixes=('1', '2'), copy=False)
+
+# join with IWA Ids
+agg = agg.merge(tasks_to_dwas[["Task ID", "IWA ID"]], on="Task ID")
+agg = agg[['Task ID', 'Date1', 'Data Value1', 'Date2', 'Data Value2', 'IWA ID']] # todo: make so this isn't required
+
+# todo: make as transform call?
+agg['difference in hours'] = agg['Data Value2']-agg['Data Value1']
+agg['difference in days'] = agg['Date2']-agg['Date1']
+
+#  output to disk
+agg.to_csv('./design_matrix/design_matrix.csv', sep='\t')
