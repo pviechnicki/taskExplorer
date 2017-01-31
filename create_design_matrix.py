@@ -157,41 +157,44 @@ merged_table['Date'] = pd.to_datetime(merged_table['Date'])
 
 # ... So, given above, we first want to get those tasks that have occurred at least 2 times
 
-unique_tasks_by_date = merged_table.drop_duplicates(subset=['Task ID', 'Date'], keep='first')
-task_updates_freq = unique_tasks_by_date['Task ID'].value_counts()
+RUN_Q1 = False
+
+if RUN_Q1:
+    unique_tasks_by_date = merged_table.drop_duplicates(subset=['Task ID', 'Date'], keep='first')
+    task_updates_freq = unique_tasks_by_date['Task ID'].value_counts()
 #update_mask = task_updates_freq > 1
 
 # ... this duplicates frequency data but makes it much easier to analyze and manipulate things
 # todo: clear SettingWithCopy warning (see is_copy, set to false?)
 #? unique_tasks_by_date.is_copy = False
-unique_tasks_by_date['frequency'] = unique_tasks_by_date['Task ID'].map(task_updates_freq)
+    unique_tasks_by_date['frequency'] = unique_tasks_by_date['Task ID'].map(task_updates_freq)
 
 # ... now we want to plot these tasks across time with the hope of observing a gap of time betwen two
 # clusters of before/after samples. So this is an overlapping density plot of the two samples.
-mask = unique_tasks_by_date['frequency'] > 1
+    mask = unique_tasks_by_date['frequency'] > 1
 
 # ... to capture sample points in time we take teh cumulative count across Task ID, so that
 # cumulative count = 1 is the first sample of that Id, c.count = 2 is the second and so on.
 # there are at most 3 samples taking, with most having only 2
 
 # note: get rid of annoying value is trying to be set on copy warning
-unique_tasks_by_date['cumulative counts'] = unique_tasks_by_date.groupby("Task ID").cumcount()+1
+    unique_tasks_by_date['cumulative counts'] = unique_tasks_by_date.groupby("Task ID").cumcount()+1
 
 # ... now we plot overlapping histograms of the before, aftre sampling in time. We should see
 # distinct clusters
-before_mask = unique_tasks_by_date['cumulative counts'] == 1
-after_mask = unique_tasks_by_date['cumulative counts'] == 2
-beyond_mask = unique_tasks_by_date['cumulative counts'] == 3
+    before_mask = unique_tasks_by_date['cumulative counts'] == 1
+    after_mask = unique_tasks_by_date['cumulative counts'] == 2
+    beyond_mask = unique_tasks_by_date['cumulative counts'] == 3
 
 # The analysis stage is sensitive to the OS used; this was done on MacOS
-bins = 50
-alpha = 0.5
-plt.hist(unique_tasks_by_date.loc[after_mask, 'Date'].values, color='orange', bins=bins, width=bins*1, alpha=2*alpha, label='after')
-plt.hist(unique_tasks_by_date.loc[before_mask, 'Date'].values, color='blue', bins=bins, alpha=alpha, label='before')
-plt.hist(unique_tasks_by_date.loc[beyond_mask, 'Date'].values, color='pink', bins=bins, width=bins*1.25, alpha=alpha, label='beyond')
-plt.legend(loc='upper right')
-plt.ion()
-plt.show()
+    bins = 50
+    alpha = 0.5
+    plt.hist(unique_tasks_by_date.loc[after_mask, 'Date'].values, color='orange', bins=bins, width=bins*1, alpha=2*alpha, label='after')
+    plt.hist(unique_tasks_by_date.loc[before_mask, 'Date'].values, color='blue', bins=bins, alpha=alpha, label='before')
+    plt.hist(unique_tasks_by_date.loc[beyond_mask, 'Date'].values, color='pink', bins=bins, width=bins*1.25, alpha=alpha, label='beyond')
+    plt.legend(loc='upper right')
+    plt.ion()
+    plt.show()
 
 # ... yep, we see a seperation of before and after task samples at about 2009 - 2010.
 # so we'll use this point in time to index all Task IDs with samples before and after that point in time
@@ -249,3 +252,25 @@ agg['difference in days'] = (agg['difference in days']/np.timedelta64(1, 'D')).a
 
 #  output to disk
 agg.to_csv('./design_matrix/design_matrix.csv', sep='\t')
+
+# plot results
+PLOT_JOINT = False
+if PLOT_JOINT:
+    g = sns.PairGrid(agg[['Data Value1', 'Data Value2', 'difference in hours', 'difference in days']])
+    g.map_diag(sns.kdeplot)
+    g.map_offdiag(sns.kdeplot, cmap="Blues_d", n_levels=6)
+
+# 3) Now we conduct exploratory analysis on random subset
+exploratory_agg = agg.sample(frac=0.33, random_state=42)
+holdout_agg = agg.drop(exploratory_agg.index)
+
+from sklearn.preprocessing import RobustScaler
+robust_scaler = RobustScaler()
+
+exploratory_agg[['difference in hours', 'difference in days']] =\
+        robust_scaler.fit_transform(exploratory_agg[['difference in hours', 'difference in days']])
+
+iwa_bing = pd.read_csv('iwa_model_data.bsv', sep="|") # cd to ../31jandata
+exploratory_agg = exploratory_agg.merge(iwa_bing[["IWA_ID", "IWA_DESC", "bing_hits", "social_index", "creative_index", "pm_index"]], right_on="IWA_ID", left_on="IWA ID")
+
+
