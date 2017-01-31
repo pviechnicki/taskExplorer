@@ -245,6 +245,7 @@ agg = agg[['Task ID', 'Date1', 'Data Value1', 'Date2', 'Data Value2', 'IWA ID']]
 # todo: make as transform call?
 agg['difference in hours'] = agg['Data Value2']-agg['Data Value1']
 agg['difference in days'] = agg['Date2']-agg['Date1']
+agg['difference in days'] = (agg['difference in days']/np.timedelta64(1, 'D')).astype(int)
 
 #  output to disk
 agg.to_csv('./design_matrix/design_matrix.csv', sep='\t')
