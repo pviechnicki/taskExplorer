@@ -253,24 +253,46 @@ agg['difference in days'] = (agg['difference in days']/np.timedelta64(1, 'D')).a
 #  output to disk
 agg.to_csv('./design_matrix/design_matrix.csv', sep='\t')
 
-# plot results
-PLOT_JOINT = False
-if PLOT_JOINT:
-    g = sns.PairGrid(agg[['Data Value1', 'Data Value2', 'difference in hours', 'difference in days']])
-    g.map_diag(sns.kdeplot)
-    g.map_offdiag(sns.kdeplot, cmap="Blues_d", n_levels=6)
 
 # 3) Now we conduct exploratory analysis on random subset
 exploratory_agg = agg.sample(frac=0.33, random_state=42)
 holdout_agg = agg.drop(exploratory_agg.index)
 
+# Tables with additional features, supplied outside of repository
+tmdata = pd.read_csv("../task_model_data.bsv", sep="|")
+iwa_bing = pd.read_csv('../31jandata/iwa_model_data.bsv', sep="|") # cd to ../31jandata
+
+exploratory_agg =\
+        exploratory_agg.merge(iwa_bing[["IWA_ID", "IWA_DESC", "bing_hits", "social_index", "creative_index", "pm_index"]],
+                              right_on="IWA_ID",
+                              left_on="IWA ID")
+exploratory_agg =\
+        exploratory_agg.merge(tmdata[['IWA_ID', 'relevance', 'importance']], right_on="IWA_ID", left_on="IWA ID")
+
+cols_to_keep =\
+      ['Task ID', 'Date1', 'Data Value1', 'Date2', 'Data Value2', 'IWA ID',\
+       'difference in hours', 'difference in days',\
+       'social_index', 'creative_index', 'pm_index',\
+       'relevance', 'importance']
+
+exploratory_agg =\
+        exploratory_agg[cols_to_keep].dropna() # note that we're droping rows with NAs
+
+cols_to_scale = [exploratory_agg.columns[idx] for idx in [2, 4, 6, 7,
+                                                          8, 9, 10, 11,
+                                                          12]]
 from sklearn.preprocessing import RobustScaler
 robust_scaler = RobustScaler()
 
-exploratory_agg[['difference in hours', 'difference in days']] =\
-        robust_scaler.fit_transform(exploratory_agg[['difference in hours', 'difference in days']])
+exploratory_agg[cols_to_scale] =\
+        robust_scaler.fit_transform(exploratory_agg[cols_to_scale])
 
-iwa_bing = pd.read_csv('iwa_model_data.bsv', sep="|") # cd to ../31jandata
-exploratory_agg = exploratory_agg.merge(iwa_bing[["IWA_ID", "IWA_DESC", "bing_hits", "social_index", "creative_index", "pm_index"]], right_on="IWA_ID", left_on="IWA ID")
+# plot results
+PLOT_JOINT = True
+if PLOT_JOINT: # takes a while
+    g = sns.PairGrid(exploratory_agg[cols_to_scale])
+    g.map_diag(sns.kdeplot)
+    g.map_offdiag(sns.kdeplot, cmap="Blues_d", n_levels=6)
 
-
+# note: see http://scikit-learn.org/stable/auto_examples/bicluster/plot_spectral_coclustering.html#sphx-glr-auto-examples-bicluster-plot-spectral-coclustering-py
+# for biclustering of data; but very tall matrix so maybe not appropriate
