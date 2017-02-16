@@ -11,7 +11,12 @@ from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import ShuffleSplit
 from sklearn.ensemble import ExtraTreesRegressor
 
+from sklearn.metrics import make_scorer
+from sklearn.metrics import r2_score
+
 random_seed = 0
+test_size = 0.10
+
 filename = "task_model_data.feb5.bsv"
 predicator_variables = ["importance", "relevance", "task_person_hours1",
                         "year_span", "pm_job", "social_job",
@@ -28,7 +33,7 @@ regressor = RandomForestRegressor(n_estimators=10,
 
 clf = regressor #et
 cv = ShuffleSplit(n_splits=3,
-                  test_size=0.05,
+                  test_size=test_size,
                   random_state=random_seed)
 
 # double check that I'm using this correctly...
@@ -39,12 +44,17 @@ scores = cross_val_score(clf,
                          n_jobs=2)
 
 print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
-#
-#cv = ShuffleSplit(n_splits=3,
-#                  test_size=0.05,
-#                  random_state=random_seed)
-#
-#scores = []
-#for train, test in cv(design_matrix):
-#    clf.fit(design.iloc[train,])
-#    clt.predict(test
+
+cv = ShuffleSplit(n_splits=3,
+                  test_size=test_size,
+                  random_state=random_seed)
+
+# same as accuracy
+scores = cross_val_score(clf,
+                         design_matrix[predicator_variables],
+                         np.ravel(design_matrix[response_variable].values),
+                         cv=cv,
+                         n_jobs=2,
+                         scoring=make_scorer(r2_score))
+
+print("R^2: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
