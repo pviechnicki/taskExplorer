@@ -290,7 +290,7 @@ robust_scaler = RobustScaler()
 #        robust_scaler.fit_transform(exploratory_agg[cols_to_scale])
 
 # plot results
-PLOT_JOINT = True
+PLOT_JOINT = False
 if PLOT_JOINT: # takes a while
     g = sns.PairGrid(exploratory_agg[cols_to_scale])
     g.map_diag(sns.kdeplot)
