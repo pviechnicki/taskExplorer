@@ -274,6 +274,7 @@ cols_to_keep =\
 agg =\
      agg[cols_to_keep].dropna() # note that we're droping rows with NAs
 
+agg.to_csv('./design_matrix/design_matrix_task_model_bing', sep='\t')
 
 # 3) Now we conduct exploratory analysis on random subset
 exploratory_agg = agg.sample(frac=0.90, random_state=42)
@@ -282,13 +283,6 @@ holdout_agg = agg.drop(exploratory_agg.index)
 cols_to_scale = [exploratory_agg.columns[idx] for idx in [2, 4, 6, 7,
                                                           8, 9, 10, 11,
                                                           12, 13, 14]]
-from sklearn.preprocessing import RobustScaler
-robust_scaler = RobustScaler()
-
-# not needed
-#exploratory_agg[cols_to_scale] =\
-#        robust_scaler.fit_transform(exploratory_agg[cols_to_scale])
-
 # plot results
 PLOT_JOINT = False
 if PLOT_JOINT: # takes a while
@@ -297,7 +291,7 @@ if PLOT_JOINT: # takes a while
     g.map_offdiag(sns.kdeplot, cmap="Blues_d", n_levels=6)
 
 g = ['Data Value1', 'social_index', 'pm_index', 'relevance', 'importance', 'job_zone', 'log_bing']
-from sklearn.tree import ExtraTreesRegressor
+from sklearn.ensemble import ExtraTreesRegressor
 
 et = ExtraTreesRegressor(n_estimators=10, random_state=0, n_jobs=2)
 

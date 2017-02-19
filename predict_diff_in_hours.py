@@ -9,12 +9,22 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import ShuffleSplit
 from sklearn.ensemble import ExtraTreesRegressor
+from sklearn import linear_model # seems to hang and not work?
+from sklearn.linear_model.stochastic_gradient import SGDRegressor
+import warnings
 
 from sklearn.metrics import make_scorer
 from sklearn.metrics import r2_score
 
+#note: user should have most up to date numpy, scipy and sklearn
+# to avoid BLAS/LaPack errors when using linear_model.LinearRegression()
+
 # quick train/test script for testing on various task data sets against various algorithms
 # broken up into Functions, Variables and a driver loop (for loop over classifier, data sets)
+
+# Run initalization
+# ignore warning, see: https://github.com/scipy/scipy/issues/5998
+warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 # Functions
 def make_cv(test_size, random_seed):
@@ -30,6 +40,9 @@ def cross_validate_me(clf,
                       random_seed,
                       predicator_variables,
                       response_variable):
+    print("\n\t-----------------------------")
+    print("\t File: {}".format(design_matrix_name))
+    print("\t Learner Type: ", clf)
     print("\t-----------------------------")
 
     scores = cross_val_score(clf,
@@ -48,7 +61,7 @@ def cross_validate_me(clf,
                              scoring=make_scorer(r2_score))
 
     print("(%d-fold average) R^2: %0.2f (+/- %0.2f)" % (len(scores), scores.mean(), scores.std() * 2))
-    print("\t", clf)
+
     print("Predictor Variables Used: (response variable {})".format(response_variable[0]),
           "\n\t",
           "\n\t".join(predicator_variables))
@@ -66,7 +79,7 @@ feb5 = {'filename':"task_model_data.feb5.bsv",
         'response_variable' : ["difference_in_hours"],
         'sep':"|"}
 
-feb18 = {'filename':"task_model_traiing_data.feb18.bsv",
+feb18 = {'filename':"task_model_training_data.feb18.bsv",
          'predicator_variables':["importance", "relevance", "task_person_hours1",
                                 "year_span", "pm_job", "social_job",
                                 "social_job", "normalized_job_zone", "pmjob_x_jobzone",
@@ -74,14 +87,14 @@ feb18 = {'filename':"task_model_traiing_data.feb18.bsv",
          'response_variable' : ["difference_in_hours"],
          'sep':'|'}
 
-orig = {'filename':"./design_matrix/design_matrix.csv",
+orig = {'filename':"./design_matrix/design_matrix_task_model_bing.csv",
         'predicator_variables':['Data Value1', 'social_index', 'pm_index',
                                 'relevance', 'importance', 'job_zone',
                                 'log_bing'],
         'response_variable' : ["difference in hours"],
         'sep':'\t'}
 
-dataset_info = [feb5] #, feb18, orig]
+dataset_info = [feb5, feb18, orig]
 
 # Driver loop (runs data, classifers over another, measuring accuracy, etc)
 for info in dataset_info:  # cross validate set of regressors over each dataset
@@ -96,7 +109,12 @@ for info in dataset_info:  # cross validate set of regressors over each dataset
         RandomForestRegressor(n_estimators=10,
                               random_state=random_seed,
                               n_jobs=2),
-        ExtraTreesRegressor(n_estimators=10, random_state=0, n_jobs=2)]
+        SGDRegressor()]
+
+
+
+        #linear_model.LinearRegression(normalize=False,
+        #                              n_jobs=1)]
 
     for regressor in regressors:
         cross_validate_me(regressor,
