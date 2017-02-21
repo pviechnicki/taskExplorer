@@ -27,8 +27,8 @@ from sklearn.metrics import r2_score
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 # Functions
-def make_cv(test_size, random_seed):
-    cv = ShuffleSplit(n_splits=5,
+def make_cv(test_size, random_seed, n_splits=2):
+    cv = ShuffleSplit(n_splits=n_splits,
                       test_size=test_size,
                       random_state=random_seed)
     return cv
@@ -70,6 +70,7 @@ def cross_validate_me(clf,
 # Variables
 random_seed = 0
 test_size = 0.10
+year_span_range = 10 # predict on year_span = 1..year_span_range
 
 orig = {'filename':"./design_matrix/design_matrix_task_model_bing.csv",
         'predicator_variables':['Data Value1', 'social_index', 'pm_index',
@@ -95,13 +96,13 @@ feb18 = {'filename':"task_model_training_data.feb18.bsv",
 
 predictme = {'filename':"task_forecast_full_data.bsv",
              'predicator_variables':["importance", "relevance", "normalized_job_zone",
-                                     "year_span", "social_job", "creative_job",
+                                     "social_job", "creative_job",
                                      "pm_job", "automation_index"],
              'response_variable' : ["difference_in_hours"],
              'sep':'|'}
 
 dataset_info = [feb18] #[feb5, feb18, orig]
-dataset_predict = [] # [predictme]
+dataset_predict = [predictme]
 
 # Driver loop (runs data, classifers over another, measuring accuracy, etc)
 for info in dataset_info:  # cross validate set of regressors over each dataset
@@ -113,16 +114,12 @@ for info in dataset_info:  # cross validate set of regressors over each dataset
     design_matrix = pd.read_csv(filename, sep=sep)[predicator_variables + response_variable]
 
     regressors = [\
-        RandomForestRegressor(n_estimators=10,
+        RandomForestRegressor(n_estimators=150,
                               random_state=random_seed,
-                              criterion="mae",
-                              max_depth=None,
-                              oob_score=True,
-                              n_jobs=4)]
-    #regressors = [\
-    #    RandomForestRegressor(n_estimators=10,
-    #                          random_state=random_seed,
-    #                          n_jobs=2)]
+                              criterion="mse",
+                              max_depth=40,
+                              oob_score=False,
+                              n_jobs=2)]
 
     for regressor in regressors:
         cross_validate_me(regressor,
@@ -146,6 +143,10 @@ for info in dataset_info:  # cross validate set of regressors over each dataset
 
             print("\n predicting on ", filename)
             predict_matrix = pd.read_csv(filename, sep=sep)[predicator_variables]
-            predict_matrix[response_variable[0]] = trained.predict(predict_matrix[predicator_variables])
 
-            predict_matrix.to_csv(filename+".predict", sep=sep)
+            for year_span in range(1, year_span_range):
+                print(".. with year_span ", year_span)
+                predict_matrix['year_span'] = year_span
+                predict_matrix[response_variable[0]] = trained.predict(
+                                            predict_matrix[predicator_variables + ['year_span']])
+                predict_matrix.to_csv(filename+"."+str(year_span) +".predict", sep=sep)
