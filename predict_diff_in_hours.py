@@ -103,23 +103,15 @@ feb18 = {'filename':"task_model_training_data.feb18.bsv",
 
 predictme = {'filename':"task_forecast_full_data.bsv",
              'predicator_variables':["importance", "relevance", "normalized_job_zone",
-<<<<<<< HEAD
                                      "year_span", "social_job", "creative_job",
-=======
                                      "social_job", "creative_job",
->>>>>>> 13444a6b8be6fe6ac782a11db2fedb47f0a9b879
                                      "pm_job", "automation_index"],
              'response_variable' : ["difference_in_hours"],
              'sep':'|'}
 
-<<<<<<< HEAD
 #dataset_info = [feb18, feb5, feb18, orig]
 dataset_info = [orig]
 dataset_predict = [] # [predictme]
-=======
-dataset_info = [feb18] #[feb5, feb18, orig]
-dataset_predict = [predictme]
->>>>>>> 13444a6b8be6fe6ac782a11db2fedb47f0a9b879
 
 # Driver loop (runs data, classifers over another, measuring accuracy, etc)
 for info in dataset_info:  # cross validate set of regressors over each dataset
@@ -133,22 +125,12 @@ for info in dataset_info:  # cross validate set of regressors over each dataset
     print("\t(dropped duplicates)")
 
     regressors = [\
-        RandomForestRegressor(n_estimators=150,
+        RandomForestRegressor(n_estimators=10,
                               random_state=random_seed,
                               criterion="mse",
-<<<<<<< HEAD
                               max_depth=None,
                               oob_score=True,
                               n_jobs=4)]
-    #regressors = [\
-    #    RandomForestRegressor(n_estimators=10,
-    #                          random_state=random_seed,
-    #                          n_jobs=2)]
-=======
-                              max_depth=40,
-                              oob_score=False,
-                              n_jobs=2)]
->>>>>>> 13444a6b8be6fe6ac782a11db2fedb47f0a9b879
 
     for regressor in regressors:
         cross_validate_me(regressor,
@@ -172,11 +154,8 @@ for info in dataset_info:  # cross validate set of regressors over each dataset
 
             print("\n predicting on ", filename)
             predict_matrix = pd.read_csv(filename, sep=sep)[predicator_variables]
-<<<<<<< HEAD
             predict_matrix[response_variable[0]] = trained.predict(predict_matrix[predicator_variables])
-
             predict_matrix.to_csv(filename+".predict", sep=sep)
-=======
 
             for year_span in range(1, year_span_range):
                 print(".. with year_span ", year_span)
@@ -184,4 +163,3 @@ for info in dataset_info:  # cross validate set of regressors over each dataset
                 predict_matrix[response_variable[0]] = trained.predict(
                                             predict_matrix[predicator_variables + ['year_span']])
                 predict_matrix.to_csv(filename+"."+str(year_span) +".predict", sep=sep)
->>>>>>> 13444a6b8be6fe6ac782a11db2fedb47f0a9b879
